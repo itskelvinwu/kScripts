@@ -1,0 +1,8 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="Woodcutter:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/Woodcutter_jar</output-path>
+    <root id="archive" name="Woodcutter.jar">
+      <element id="module-output" name="Woodcutter" />
+    </root>
+  </artifact>
+</component>
