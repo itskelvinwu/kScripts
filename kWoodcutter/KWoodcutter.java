@@ -12,6 +12,8 @@ import com.osmb.api.item.ItemSearchResult;
 import com.osmb.api.ui.chatbox.dialogue.DialogueType;
 import com.osmb.api.input.MenuHook;
 import com.osmb.api.input.MenuEntry;
+import com.osmb.api.trackers.experience.XPTracker;
+import com.osmb.api.ui.component.tabs.skill.SkillType;
 import java.util.regex.Pattern;
 import javax.swing.*;
 import java.awt.Color;
@@ -30,8 +32,8 @@ import java.util.Random;
 @ScriptDefinition(
         name = "KWoodcutter",
         author = "Kelvin",
-        version = 1.2,
-        description = "Advanced woodcutting script with bonfire & fletching (shafts/bows)",
+        version = 1.9,
+        description = "Advanced woodcutting script, now with Yews!",
         skillCategory = SkillCategory.WOODCUTTING
 )
 public class KWoodcutter extends Script {
@@ -40,10 +42,10 @@ public class KWoodcutter extends Script {
         super(param);
     }
 
-    // Default areas (Varrock 30x30, others 20x20)
+    // Default areas
     private static final RectangleArea NORMAL_AREA = new RectangleArea(3145, 3385, 30, 30, 0);
     private static final WorldPosition NORMAL_CENTER = new WorldPosition(3164, 3403, 0);
-    private static final RectangleArea OAK_AREA = new RectangleArea(3145, 3385, 30, 30, 0);
+    private static final RectangleArea OAK_AREA = new RectangleArea(3149, 3404, 30, 30, 0);
     private static final WorldPosition OAK_CENTER = new WorldPosition(3164, 3419, 0);
     private static final RectangleArea DRAYNOR_WILLOW_AREA = new RectangleArea(3073, 3218, 20, 20, 0);
     private static final WorldPosition DRAYNOR_WILLOW_CENTER = new WorldPosition(3087, 3236, 0);
@@ -51,34 +53,31 @@ public class KWoodcutter extends Script {
     private static final WorldPosition BO_WILLOW_CENTER = new WorldPosition(2520, 3578, 0);
     private static final RectangleArea MAPLE_AREA = new RectangleArea(2709, 3474, 20, 20, 0);
     private static final WorldPosition MAPLE_CENTER = new WorldPosition(2731, 3500, 0);
+    private static final RectangleArea YEW_AREA = new RectangleArea(2700, 3452, 20, 20, 0); // Centered on 2710,3462
+    private static final WorldPosition YEW_CENTER = new WorldPosition(2710, 3462, 0);
     private static final double MAX_DISTANCE_FROM_CENTER = 40.0;
 
     private static final Set<Integer> AXE_IDS = Set.of(1351, 1349, 1353, 1361, 1355, 1357, 1359, 6739, 13241, 23673, 20011);
 
     private static final Set<String> NORMAL_NAMES = Set.of("Tree");
     private static final int NORMAL_LOG_ID = 1511;
-    private static final double NORMAL_WC_XP = 25.0;
-    private static final double NORMAL_FM_XP = 40.0;
 
     private static final Set<String> OAK_NAMES = Set.of("Oak tree");
     private static final int OAK_LOG_ID = 1521;
-    private static final double OAK_WC_XP = 37.5;
-    private static final double OAK_FM_XP = 60.0;
 
     private static final Set<String> WILLOW_NAMES = Set.of("Willow tree");
     private static final int WILLOW_LOG_ID = 1519;
-    private static final double WILLOW_WC_XP = 67.5;
-    private static final double WILLOW_FM_XP = 90.0;
 
     private static final Set<String> MAPLE_NAMES = Set.of("Maple tree");
     private static final int MAPLE_LOG_ID = 1517;
-    private static final double MAPLE_WC_XP = 100.0;
-    private static final double MAPLE_FM_XP = 135.0;
+
+    private static final Set<String> YEW_NAMES = Set.of("Yew tree");
+    private static final int YEW_LOG_ID = 1515;
 
     private static final Set<Integer> CLUE_BOX_IDS = Set.of(19835, 19836, 19837, 19838, 19839, 23164);
     private static final int TINDERBOX_ID = 590;
     private static final int KNIFE_ID = 946;
-    private static final Set<Integer> ALL_LOG_IDS = Set.of(1511, 1521, 1519, 1517);
+    private static final Set<Integer> ALL_LOG_IDS = Set.of(1511, 1521, 1519, 1517, 1515);
 
     // Fletching products
     private static final int ARROW_SHAFT_ID = 52;
@@ -87,48 +86,49 @@ public class KWoodcutter extends Script {
             NORMAL_LOG_ID, 50,
             OAK_LOG_ID, 54,
             WILLOW_LOG_ID, 60,
-            MAPLE_LOG_ID, 64
+            MAPLE_LOG_ID, 64,
+            YEW_LOG_ID, 66
     );
 
-    // Fletching XP per log (wiki accurate)
-    private static final Map<Integer, Map<String, Double>> FLETCH_XP_MAP = Map.of(
-            NORMAL_LOG_ID, Map.of("Arrow Shafts", 5.0, "Shortbow (u)", 5.0),
-            OAK_LOG_ID, Map.of("Arrow Shafts", 10.0, "Shortbow (u)", 16.5),
-            WILLOW_LOG_ID, Map.of("Arrow Shafts", 15.0, "Shortbow (u)", 33.3),
-            MAPLE_LOG_ID, Map.of("Arrow Shafts", 20.0, "Shortbow (u)", 50.0)
+    private static final Map<Integer, Integer> LONGBOW_U_IDS = Map.of(
+            NORMAL_LOG_ID, 48,
+            OAK_LOG_ID, 56,
+            WILLOW_LOG_ID, 58,
+            MAPLE_LOG_ID, 62,
+            YEW_LOG_ID, 68
     );
 
-    // Tree string to log ID (for GUI level calculation before start)
+    // Tree string to log ID
     private static final Map<String, Integer> TREE_TO_LOG_ID = Map.of(
             "Normal trees (Varrock West)", NORMAL_LOG_ID,
             "Oaks (Varrock West)", OAK_LOG_ID,
             "Willows (Draynor Village)", WILLOW_LOG_ID,
             "Willows (Barbarian Outpost)", WILLOW_LOG_ID,
-            "Maples (Seers Village)", MAPLE_LOG_ID
+            "Maples (Seers Village)", MAPLE_LOG_ID,
+            "Yews (Seers Village)", YEW_LOG_ID
     );
 
-    // Fletching levels (exact per user)
+    // Fletching levels (added Yew)
     private static final Map<Integer, Map<String, Integer>> FLETCH_LEVEL_MAP = Map.of(
-            NORMAL_LOG_ID, Map.of("Arrow Shafts", 1, "Shortbow (u)", 5),
-            OAK_LOG_ID, Map.of("Arrow Shafts", 15, "Shortbow (u)", 20),
-            WILLOW_LOG_ID, Map.of("Arrow Shafts", 30, "Shortbow (u)", 35),
-            MAPLE_LOG_ID, Map.of("Arrow Shafts", 45, "Shortbow (u)", 50)
+            NORMAL_LOG_ID, Map.of("Arrow Shafts", 1, "Shortbow (u)", 5, "Longbow (u)", 10),
+            OAK_LOG_ID, Map.of("Arrow Shafts", 15, "Shortbow (u)", 20, "Longbow (u)", 25),
+            WILLOW_LOG_ID, Map.of("Arrow Shafts", 30, "Shortbow (u)", 35, "Longbow (u)", 40),
+            MAPLE_LOG_ID, Map.of("Arrow Shafts", 45, "Shortbow (u)", 50, "Longbow (u)", 55),
+            YEW_LOG_ID, Map.of("Arrow Shafts", 60, "Shortbow (u)", 65, "Longbow (u)", 70)
     );
 
-    // WC levels
+    // WC levels (added Yew)
     private static final Map<String, Integer> TREE_WC_LEVEL_MAP = Map.of(
             "Normal trees (Varrock West)", 1,
             "Oaks (Varrock West)", 15,
             "Willows (Draynor Village)", 30,
             "Willows (Barbarian Outpost)", 30,
-            "Maples (Seers Village)", 45
+            "Maples (Seers Village)", 45,
+            "Yews (Seers Village)", 60
     );
 
     private Set<String> currentTreeNames;
     private int currentLogID;
-    private double currentWCXPPerLog;
-    private double currentFMXPPerLog;
-    private double currentFletchXPPerLog = 0.0;
     private RectangleArea currentTreeArea;
     private WorldPosition currentTreeCenter;
     private String currentTreeType;
@@ -137,16 +137,18 @@ public class KWoodcutter extends Script {
     private String fletchOption = "Arrow Shafts";
 
     private long scriptStartTime;
-    private long totalLogsGained = 0;
     private long lastLogCount = 0;
+    private long lastLogIncreaseTime = 0;
     private double wcXpPerHour = 0;
-    private double fmXpPerHour = 0;
+    private double secondaryXpPerHour = 0;
     private String currentState = "Initializing";
 
     private RSObject currentChoppingTree = null;
     private boolean isProcessing = false;
     private volatile boolean guiReady = false;
     private boolean loaded = false;
+
+    private Map<SkillType, XPTracker> xpTrackers;
 
     private static final String SWING_MESSAGE = "You swing your axe at the tree";
     private static final String FULL_INVENTORY_MESSAGE = "Your inventory is too full to hold any more logs.";
@@ -155,7 +157,6 @@ public class KWoodcutter extends Script {
 
     private WorldPosition bonfirePosition = null;
     private long outOfAreaStart = 0;
-    private long lastLogIncreaseTime = 0;
 
     // Bonfire state machine
     private enum BonfireState {
@@ -182,8 +183,6 @@ public class KWoodcutter extends Script {
 
     public void onStart() {
         scriptStartTime = System.currentTimeMillis();
-        totalLogsGained = 0;
-        lastLogCount = 0;
         currentChoppingTree = null;
         isProcessing = false;
         loaded = false;
@@ -191,12 +190,15 @@ public class KWoodcutter extends Script {
         bonfirePosition = null;
         outOfAreaStart = 0;
         lastLogIncreaseTime = scriptStartTime;
+        lastLogCount = 0;
         bonfireState = BonfireState.IDLE;
         previousBurnLogs = 0;
         lastLogDecreaseTime = 0;
         fletchTriggeredThisInv = false;
         previousFletchLogs = 0;
         lastFletchDecreaseTime = 0;
+
+        xpTrackers = getXPTrackers();
 
         SwingUtilities.invokeLater(this::createModernGUI);
         while (!guiReady) {
@@ -272,7 +274,8 @@ public class KWoodcutter extends Script {
                 "Oaks (Varrock West)",
                 "Willows (Draynor Village)",
                 "Willows (Barbarian Outpost)",
-                "Maples (Seers Village)"
+                "Maples (Seers Village)",
+                "Yews (Seers Village)"
         };
         JComboBox<String> treeCombo = new JComboBox<>(trees);
         treeCombo.setFont(new Font("Segoe UI", Font.PLAIN, 18));
@@ -308,7 +311,7 @@ public class KWoodcutter extends Script {
         gbc.insets = new Insets(20, 20, 10, 20);
         mainPanel.add(fletchLabel, gbc);
 
-        String[] fletchOptions = {"Arrow Shafts", "Shortbow (u)"};
+        String[] fletchOptions = {"Arrow Shafts", "Shortbow (u)", "Longbow (u)"};
         JComboBox<String> fletchCombo = new JComboBox<>(fletchOptions);
         fletchCombo.setFont(new Font("Segoe UI", Font.PLAIN, 18));
         fletchCombo.setPreferredSize(new Dimension(400, 50));
@@ -346,36 +349,29 @@ public class KWoodcutter extends Script {
 
             if (selectedTree.contains("Normal trees")) {
                 currentTreeNames = NORMAL_NAMES;
-                currentWCXPPerLog = NORMAL_WC_XP;
-                currentFMXPPerLog = NORMAL_FM_XP;
                 currentTreeArea = NORMAL_AREA;
                 currentTreeCenter = NORMAL_CENTER;
                 currentTreeType = "Normal Trees";
             } else if (selectedTree.contains("Oaks")) {
                 currentTreeNames = OAK_NAMES;
-                currentWCXPPerLog = OAK_WC_XP;
-                currentFMXPPerLog = OAK_FM_XP;
                 currentTreeArea = OAK_AREA;
                 currentTreeCenter = OAK_CENTER;
                 currentTreeType = "Oaks";
             } else if (selectedTree.contains("Willows")) {
                 currentTreeNames = WILLOW_NAMES;
-                currentWCXPPerLog = WILLOW_WC_XP;
-                currentFMXPPerLog = WILLOW_FM_XP;
                 currentTreeArea = selectedTree.contains("Draynor") ? DRAYNOR_WILLOW_AREA : BO_WILLOW_AREA;
                 currentTreeCenter = selectedTree.contains("Draynor") ? DRAYNOR_WILLOW_CENTER : BO_WILLOW_CENTER;
                 currentTreeType = selectedTree.contains("Draynor") ? "Willows (Draynor)" : "Willows (BO)";
-            } else {
+            } else if (selectedTree.contains("Maples")) {
                 currentTreeNames = MAPLE_NAMES;
-                currentWCXPPerLog = MAPLE_WC_XP;
-                currentFMXPPerLog = MAPLE_FM_XP;
                 currentTreeArea = MAPLE_AREA;
                 currentTreeCenter = MAPLE_CENTER;
                 currentTreeType = "Maples";
-            }
-
-            if (mode.equals("Fletching")) {
-                currentFletchXPPerLog = FLETCH_XP_MAP.getOrDefault(currentLogID, Map.of("Arrow Shafts", 5.0, "Shortbow (u)", 5.0)).getOrDefault(fletchOption, 5.0);
+            } else if (selectedTree.contains("Yews")) {
+                currentTreeNames = YEW_NAMES;
+                currentTreeArea = YEW_AREA;
+                currentTreeCenter = YEW_CENTER;
+                currentTreeType = "Yews";
             }
 
             guiReady = true;
@@ -399,7 +395,7 @@ public class KWoodcutter extends Script {
             if (isFletch) {
                 String option = (String) fletchCombo.getSelectedItem();
                 int logID = TREE_TO_LOG_ID.get(selectedTree);
-                int fletchLevel = FLETCH_LEVEL_MAP.getOrDefault(logID, Map.of("Arrow Shafts", 1, "Shortbow (u)", 5)).getOrDefault(option, 1);
+                int fletchLevel = FLETCH_LEVEL_MAP.getOrDefault(logID, Map.of()).getOrDefault(option, 1);
                 levelLabel.setText("Required Levels: Woodcutting " + wcLevel + " | Fletching " + fletchLevel);
             } else if (selectedMode.equals("Bonfire")) {
                 levelLabel.setText("Required Levels: Woodcutting " + wcLevel + " | Firemaking " + wcLevel);
@@ -456,7 +452,10 @@ public class KWoodcutter extends Script {
         if (fletchOption.equals("Arrow Shafts")) {
             return ARROW_SHAFT_ID;
         }
-        return SHORTBOW_U_IDS.getOrDefault(currentLogID, 50);
+        if (fletchOption.equals("Shortbow (u)")) {
+            return SHORTBOW_U_IDS.getOrDefault(currentLogID, 50);
+        }
+        return LONGBOW_U_IDS.getOrDefault(currentLogID, 48);
     }
 
     private int getCurrentLogCount() {
@@ -481,15 +480,25 @@ public class KWoodcutter extends Script {
             int currentLogs = getCurrentLogCount();
             if (currentLogs > lastLogCount) {
                 lastLogIncreaseTime = System.currentTimeMillis();
-                totalLogsGained += (currentLogs - lastLogCount);
             }
             lastLogCount = currentLogs;
 
             long elapsed = System.currentTimeMillis() - scriptStartTime;
             long elapsedSeconds = elapsed / 1000;
-            wcXpPerHour = elapsedSeconds > 0 ? (totalLogsGained * currentWCXPPerLog * 3600 / elapsedSeconds) : 0;
-            fmXpPerHour = mode.equals("Bonfire") ? (elapsedSeconds > 0 ? (totalLogsGained * currentFMXPPerLog * 3600 / elapsedSeconds) : 0)
-                    : mode.equals("Fletching") ? (elapsedSeconds > 0 ? (totalLogsGained * currentFletchXPPerLog * 3600 / elapsedSeconds) : 0) : 0;
+
+            // Real-time XP from XPTracker map (SkillType enum keys)
+            XPTracker wcTracker = xpTrackers.get(SkillType.WOODCUTTING);
+            wcXpPerHour = wcTracker != null ? wcTracker.getXpPerHour() : 0;
+
+            if (mode.equals("Bonfire")) {
+                XPTracker fmTracker = xpTrackers.get(SkillType.FIREMAKING);
+                secondaryXpPerHour = fmTracker != null ? fmTracker.getXpPerHour() : 0;
+            } else if (mode.equals("Fletching")) {
+                XPTracker fletchTracker = xpTrackers.get(SkillType.FLETCHING);
+                secondaryXpPerHour = fletchTracker != null ? fletchTracker.getXpPerHour() : 0;
+            } else {
+                secondaryXpPerHour = 0;
+            }
 
             ItemGroupResult fullInv = getWidgetManager().getInventory().search(Collections.emptySet());
             ItemGroupResult axeResult = getWidgetManager().getInventory().search(AXE_IDS);
@@ -528,8 +537,6 @@ public class KWoodcutter extends Script {
                 currentChoppingTree = null;
                 bonfireState = BonfireState.FIND_FIRE;
                 fletchTriggeredThisInv = false;
-                previousBurnLogs = currentLogs;
-                previousFletchLogs = currentLogs;
                 lastLogDecreaseTime = System.currentTimeMillis();
                 lastFletchDecreaseTime = System.currentTimeMillis();
             }
@@ -607,10 +614,9 @@ public class KWoodcutter extends Script {
                             ItemSearchResult logItemLight = logResult.getRandomItem(Set.of(currentLogID));
                             logItemLight.interact();
 
-                            if (submitHumanTask(() -> hasChatMessage(LIGHT_FIRE_MESSAGE), 12000)) {
+                            if (pollFramesHuman(() -> hasChatMessage(LIGHT_FIRE_MESSAGE), 12000)) {
                                 bonfirePosition = lightPos;
                                 log("New bonfire lit at " + bonfirePosition);
-                                previousBurnLogs = logsNow;
                                 lastLogDecreaseTime = System.currentTimeMillis();
                                 bonfireState = BonfireState.WALK_TO_FIRE;
                             } else if (hasChatMessage(CANNOT_LIGHT_MESSAGE)) {
@@ -679,7 +685,6 @@ public class KWoodcutter extends Script {
                             log("Stuck recovery - clearing bonfire position and relighting fresh");
                             bonfirePosition = null;
                             bonfireState = BonfireState.FIND_FIRE;
-                            previousBurnLogs = logsNow;
                             lastLogDecreaseTime = System.currentTimeMillis();
                             break;
 
@@ -709,15 +714,17 @@ public class KWoodcutter extends Script {
                     }
 
                     if (logsNow == 0) {
-                        // Drop bows if shortbow mode
-                        if (fletchOption.equals("Shortbow (u)")) {
-                            int bowID = SHORTBOW_U_IDS.getOrDefault(currentLogID, 50);
+                        if (!fletchOption.equals("Arrow Shafts")) {
+                            int bowID = fletchOption.equals("Shortbow (u)") ? SHORTBOW_U_IDS.getOrDefault(currentLogID, 50)
+                                    : LONGBOW_U_IDS.getOrDefault(currentLogID, 48);
                             ItemGroupResult bows = getWidgetManager().getInventory().search(Set.of(bowID));
                             if (bows != null && bows.getAmount(bowID) > 0) {
-                                log("Dropping " + bows.getAmount(bowID) + " shortbow(u)");
+                                log("Dropping all " + bows.getAmount(bowID) + " " + fletchOption);
                                 getWidgetManager().getInventory().dropItems(Set.of(bowID));
+                                sleep(myRandom(800, 1200));
                             }
                         }
+
                         isProcessing = false;
                         currentState = "Chopping";
                         fletchTriggeredThisInv = false;
@@ -725,19 +732,16 @@ public class KWoodcutter extends Script {
                         return myRandom(600, 1200);
                     }
 
-                    // Progress monitoring
                     if (logsNow < previousFletchLogs) {
                         lastFletchDecreaseTime = System.currentTimeMillis();
                         previousFletchLogs = logsNow;
                     }
 
-                    // Stuck recovery
                     if (fletchTriggeredThisInv && System.currentTimeMillis() - lastFletchDecreaseTime > 60000) {
                         log("No fletching progress 60s - retrying trigger");
                         fletchTriggeredThisInv = false;
                     }
 
-                    // Handle fletching dialogue - select chosen product
                     if (getWidgetManager().getDialogue().getDialogueType() == DialogueType.ITEM_OPTION) {
                         int productID = getFletchProductID();
                         if (getWidgetManager().getDialogue().selectItem(productID)) {
@@ -750,7 +754,6 @@ public class KWoodcutter extends Script {
                         return myRandom(600, 1000);
                     }
 
-                    // Trigger fletching once per inventory
                     if (!fletchTriggeredThisInv) {
                         ItemSearchResult knife = knifeResult.getRandomItem(Set.of(KNIFE_ID));
                         ItemSearchResult logItem = logResult.getRandomItem(Set.of(currentLogID));
@@ -761,7 +764,6 @@ public class KWoodcutter extends Script {
                         log("Triggered fletching - waiting for dialogue to select " + fletchOption);
                     }
 
-                    // AFK during fletching
                     return myRandom(3000, 6000);
                 }
             }
@@ -841,13 +843,13 @@ public class KWoodcutter extends Script {
             }
 
             double dist = tree.getTileDistance(myPos);
-            if (!submitHumanTask(() -> tree.getTileDistance(getWorldPosition()) <= 1, (int)(dist * 1000) + 3000)) {
+            if (!pollFramesHuman(() -> tree.getTileDistance(getWorldPosition()) <= 1, (int)(dist * 1000) + 3000)) {
                 log("Failed reach - retrying");
                 currentChoppingTree = null;
                 return myRandom(600, 1200);
             }
 
-            if (!submitHumanTask(() -> hasChatMessage(SWING_MESSAGE), 5000)) {
+            if (!pollFramesHuman(() -> hasChatMessage(SWING_MESSAGE), 5000)) {
                 log("No swing - retrying");
                 currentChoppingTree = null;
                 return myRandom(600, 1200);
@@ -962,9 +964,9 @@ public class KWoodcutter extends Script {
 
         if (mode.equals("Bonfire") || mode.equals("Fletching")) {
             String secondaryLabel = mode.equals("Fletching") ? "Fletching" : "Firemaking";
-            int secondaryColor = mode.equals("Fletching") ? 0xFFFF4500 : 0xFF00B48C; // Fletching orange, Firemaking green
-            c.drawText(String.format("%s XP/hr: %.0f", secondaryLabel, fmXpPerHour), textX + 1, textY + 1, 0xFF008B6B, statFont);
-            c.drawText(String.format("%s XP/hr: %.0f", secondaryLabel, fmXpPerHour), textX, textY, secondaryColor, statFont);
+            int secondaryColor = mode.equals("Fletching") ? 0xFFFF4500 : 0xFF00B48C;
+            c.drawText(String.format("%s XP/hr: %.0f", secondaryLabel, secondaryXpPerHour), textX + 1, textY + 1, 0xFF008B6B, statFont);
+            c.drawText(String.format("%s XP/hr: %.0f", secondaryLabel, secondaryXpPerHour), textX, textY, secondaryColor, statFont);
         }
 
         if (bonfirePosition != null) {
