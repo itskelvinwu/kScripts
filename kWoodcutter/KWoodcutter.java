@@ -28,12 +28,16 @@ import java.awt.event.MouseEvent;
 import java.util.*;
 import java.util.function.Predicate;
 import java.util.Random;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.Properties;
 
 @ScriptDefinition(
         name = "KWoodcutter",
         author = "Kelvin",
         version = 1.9,
-        description = "Advanced woodcutting script, now with Yews!",
+        description = "Advanced woodcutting script with real-time XP tracking, state machine bonfire & selectable fletching (shafts/short/long bows) - now with Yews!",
         skillCategory = SkillCategory.WOODCUTTING
 )
 public class KWoodcutter extends Script {
@@ -53,7 +57,7 @@ public class KWoodcutter extends Script {
     private static final WorldPosition BO_WILLOW_CENTER = new WorldPosition(2520, 3578, 0);
     private static final RectangleArea MAPLE_AREA = new RectangleArea(2709, 3474, 20, 20, 0);
     private static final WorldPosition MAPLE_CENTER = new WorldPosition(2731, 3500, 0);
-    private static final RectangleArea YEW_AREA = new RectangleArea(2700, 3452, 20, 20, 0); // Centered on 2710,3462
+    private static final RectangleArea YEW_AREA = new RectangleArea(2700, 3452, 20, 20, 0);
     private static final WorldPosition YEW_CENTER = new WorldPosition(2710, 3462, 0);
     private static final double MAX_DISTANCE_FROM_CENTER = 40.0;
 
@@ -181,6 +185,13 @@ public class KWoodcutter extends Script {
 
     private static final Pattern USE_LOG_TO_FIRE = Pattern.compile("^use\\s+(.+?)\\s*->\\s*(fire|forester's campfire)$", Pattern.CASE_INSENSITIVE);
 
+    private static final String CONFIG_FILE = "kwoodcutter_config.properties";
+
+    // Default selections (fallback)
+    private String defaultTree = "Normal trees (Varrock West)";
+    private String defaultMode = "Power chop";
+    private String defaultFletch = "Arrow Shafts";
+
     public void onStart() {
         scriptStartTime = System.currentTimeMillis();
         currentChoppingTree = null;
@@ -199,6 +210,17 @@ public class KWoodcutter extends Script {
         lastFletchDecreaseTime = 0;
 
         xpTrackers = getXPTrackers();
+
+        // Load saved config if exists
+        Properties props = new Properties();
+        try (FileInputStream fis = new FileInputStream(CONFIG_FILE)) {
+            props.load(fis);
+            defaultTree = props.getProperty("tree", defaultTree);
+            defaultMode = props.getProperty("mode", defaultMode);
+            defaultFletch = props.getProperty("fletch", defaultFletch);
+        } catch (IOException e) {
+            // No config yet - use defaults
+        }
 
         SwingUtilities.invokeLater(this::createModernGUI);
         while (!guiReady) {
@@ -278,6 +300,7 @@ public class KWoodcutter extends Script {
                 "Yews (Seers Village)"
         };
         JComboBox<String> treeCombo = new JComboBox<>(trees);
+        treeCombo.setSelectedItem(defaultTree);
         treeCombo.setFont(new Font("Segoe UI", Font.PLAIN, 18));
         treeCombo.setPreferredSize(new Dimension(400, 50));
         gbc.gridy = 3;
@@ -299,6 +322,7 @@ public class KWoodcutter extends Script {
 
         String[] modes = {"Power chop", "Bonfire", "Fletching"};
         JComboBox<String> modeCombo = new JComboBox<>(modes);
+        modeCombo.setSelectedItem(defaultMode);
         modeCombo.setFont(new Font("Segoe UI", Font.PLAIN, 18));
         modeCombo.setPreferredSize(new Dimension(400, 50));
         gbc.gridy = 6;
@@ -313,13 +337,16 @@ public class KWoodcutter extends Script {
 
         String[] fletchOptions = {"Arrow Shafts", "Shortbow (u)", "Longbow (u)"};
         JComboBox<String> fletchCombo = new JComboBox<>(fletchOptions);
+        fletchCombo.setSelectedItem(defaultFletch);
         fletchCombo.setFont(new Font("Segoe UI", Font.PLAIN, 18));
         fletchCombo.setPreferredSize(new Dimension(400, 50));
         gbc.gridy = 8;
         mainPanel.add(fletchCombo, gbc);
 
-        fletchLabel.setVisible(false);
-        fletchCombo.setVisible(false);
+        // Initial visibility based on loaded mode
+        boolean initialFletchVisible = defaultMode.equals("Fletching");
+        fletchLabel.setVisible(initialFletchVisible);
+        fletchCombo.setVisible(initialFletchVisible);
 
         JButton startBtn = new JButton("START SCRIPT");
         startBtn.setFont(new Font("Segoe UI", Font.BOLD, 32));
@@ -374,6 +401,17 @@ public class KWoodcutter extends Script {
                 currentTreeType = "Yews";
             }
 
+            // Save the selected settings
+            Properties props = new Properties();
+            props.setProperty("tree", selectedTree);
+            props.setProperty("mode", mode);
+            props.setProperty("fletch", fletchOption);
+            try (FileOutputStream fos = new FileOutputStream(CONFIG_FILE)) {
+                props.store(fos, "KWoodcutter last used settings");
+            } catch (IOException ex) {
+                log("Failed to save config: " + ex.getMessage());
+            }
+
             guiReady = true;
             frame.dispose();
         });
@@ -382,7 +420,7 @@ public class KWoodcutter extends Script {
         gbc.insets = new Insets(30, 20, 20, 20);
         mainPanel.add(startBtn, gbc);
 
-        // Update level label live
+        // Update level label and fletch visibility live
         Runnable updateLevels = () -> {
             String selectedTree = (String) treeCombo.getSelectedItem();
             String selectedMode = (String) modeCombo.getSelectedItem();
