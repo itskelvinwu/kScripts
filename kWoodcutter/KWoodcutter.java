@@ -36,8 +36,8 @@ import java.util.Properties;
 @ScriptDefinition(
         name = "KWoodcutter",
         author = "Kelvin",
-        version = 1.9,
-        description = "Advanced woodcutting script with real-time XP tracking, state machine bonfire & selectable fletching (shafts/short/long bows) - now with Yews!",
+        version = 1.2,
+        description = "Now with Yews!",
         skillCategory = SkillCategory.WOODCUTTING
 )
 public class KWoodcutter extends Script {
